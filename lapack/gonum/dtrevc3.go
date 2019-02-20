@@ -106,24 +106,34 @@ import (
 //
 // Dtrevc3 is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dtrevc3(side lapack.EVSide, howmny lapack.EVHowMany, selected []bool, n int, t []float64, ldt int, vl []float64, ldvl int, vr []float64, ldvr int, mm int, work []float64, lwork int) (m int) {
-	switch side {
-	default:
-		panic(badEVSide)
-	case lapack.EVRight, lapack.EVLeft, lapack.EVBoth:
-	}
-	switch howmny {
-	default:
-		panic(badEVHowMany)
-	case lapack.EVAll, lapack.EVAllMulQ, lapack.EVSelected:
-	}
+	bothv := side == lapack.EVBoth
+	rightv := side != lapack.EVRight
+	leftv := side != lapack.EVLeft
 	switch {
+	case rightv && leftv && bothv:
+		panic(badEVSide)
+	case howmny != lapack.EVAll && howmny != lapack.EVAllMulQ && howmny != lapack.EVSelected:
+		panic(badEVHowMany)
 	case n < 0:
 		panic(nLT0)
-	case len(work) < lwork:
-		panic(shortWork)
+	case ldt < max(1, n):
+		panic(badLdT)
+	case ldvl < 1 || (leftv && ldvl < n):
+		panic(badLdVL)
+	case ldvr < 1 || (rightv && ldvr < n):
+		panic(badLdVR)
 	case lwork < max(1, 3*n) && lwork != -1:
 		panic(badWork)
+	case len(work) < max(1, lwork):
+		panic(shortWork)
 	}
+
+	// Quick return if possible.
+	if n == 0 {
+		work[0] = 1
+		return 0
+	}
+
 	if lwork != -1 {
 		if howmny == lapack.EVSelected {
 			if len(selected) != n {
@@ -158,18 +168,12 @@ func (impl Implementation) Dtrevc3(side lapack.EVSide, howmny lapack.EVHowMany, 
 			panic("lapack: insufficient number of columns")
 		}
 		checkMatrix(n, n, t, ldt)
-		if (side == lapack.EVRight || side == lapack.EVBoth) && m > 0 {
+		if rightv && m > 0 {
 			checkMatrix(n, m, vr, ldvr)
 		}
-		if (side == lapack.EVLeft || side == lapack.EVBoth) && m > 0 {
+		if leftv && m > 0 {
 			checkMatrix(n, m, vl, ldvl)
 		}
-	}
-
-	// Quick return if possible.
-	if n == 0 {
-		work[0] = 1
-		return m
 	}
 
 	const (
